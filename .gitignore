@@ -2,6 +2,9 @@
 *.bin
 *.dat
 *.a
+client/client
 client/sipadll.go
 client/sipasec.go
 client/openssl.go
+downloader/downloader
+wallet/wallet
