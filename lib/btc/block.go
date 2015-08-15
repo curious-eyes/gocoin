@@ -13,6 +13,8 @@ type Block struct {
 	TxCount, TxOffset int  // Number of transactions and byte offset to the first one
 	Trusted bool // if the block is trusted, we do not check signatures and some other things...
 	LastKnownHeight uint32
+
+	VerifyFlags uint32 // These flags are set by chain.CheckBlock and used by script.VerifyTxScript
 }
 
 

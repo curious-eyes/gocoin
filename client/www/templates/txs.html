@@ -40,7 +40,7 @@
 <td valign="top" width="*">
 	<table>
 		<tr><td>Accepted transactions:<td><input type="button" id="but2s" onclick="show_txs2s('')">
-		<b>{T2S_SIZE}</b>
+		<b>{T2S_SIZE}</b> [<a href="javascript:show_txs2s('?ownonly=1')">own</a>]
 		<tr><td>UTXOs spent in memory:<td><b id="outspent"></b> (avg. <b id="avgoutspertx"></b> / tx)
 		<tr><td>Rejected transactions:<td><input type="button" id="butre" value=" {TRE_CNT} " onclick="show_txsre()">
 		<b>{TRE_SIZE}</b>
@@ -158,20 +158,21 @@ function val2reason(r) {
 
 function send1tx_click(id) {
 	if (confirm("Send TX "+id+" to one random peer")) {
-		show_txs2s('?sendone='+id+'&sid='+sid)
+		show_txs2s('?sendone='+id+'&ownonly=1&sid='+sid)
 	}
 }
 
 function sendtx_click(id) {
 	if (confirm("Broadcast TX "+id)) {
-		show_txs2s('?send='+id+'&sid='+sid)
+		show_txs2s('?send='+id+'&ownonly=1&sid='+sid)
 	}
 }
 
 function deltx_click(id) {
 	if (confirm("Delete TX "+id)) {
-		show_txs2s('?del='+id+'&sid='+sid)
+		show_txs2s('?del='+id+'&ownonly=1&sid='+sid)
 	}
+	txrawdata.innerText = ''
 }
 
 var prvpos
@@ -256,7 +257,9 @@ function show_txs2s(extrapar) {
 		if(xmlHttp.readyState==4) {
 			while (txs2s.rows.length>1)  txs2s.deleteRow(1)
 			txs = aj.responseXML.getElementsByTagName('tx')
-			but2s.value = ' ' + txs.length + ' '
+			if (extrapar.indexOf('ownonly=1')==-1) {
+				but2s.value = ' ' + txs.length + ' '
+			}
 			for (var i=0; i<txs.length; i++) {
 				var c,row
 				var own = parseInt(xval(txs[i], 'own'))

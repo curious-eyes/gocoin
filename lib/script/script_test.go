@@ -1,26 +1,20 @@
 package script
 
 import (
+	//"fmt"
+	"errors"
 	"testing"
+	"strings"
 	"io/ioutil"
-	"encoding/hex"
 	"encoding/json"
 	"github.com/piotrnar/gocoin/lib/btc"
 )
 
-// use some dummy tx
-var dummy_tx *btc.Tx
-
-func init() {
-	rd, _ := hex.DecodeString("0100000001b14bdcbc3e01bdaad36cc08e81e69c82e1060bc14e518db2b49aa43ad90ba26000000000490047304402203f16c6f40162ab686621ef3000b04e75418a0c0cb2d8aebeac894ae360ac1e780220ddc15ecdfc3507ac48e1681a33eb60996631bf6bf5bc0a0682c4db743ce7ca2b01ffffffff0140420f00000000001976a914660d4ef3a743e3e696ad990364e555c271ad504b88ac00000000")
-	dummy_tx, _ := btc.NewTx(rd)
-	dummy_tx.Size = uint32(len(rd))
-	ha := btc.Sha2Sum(rd)
-	dummy_tx.Hash = btc.NewUint256(ha[:])
-}
 
 
 func TestScritpsValid(t *testing.T) {
+	DBG_ERR = false
+
 	dat, er := ioutil.ReadFile("../test/script_valid.json")
 	if er != nil {
 		t.Error(er.Error())
@@ -33,9 +27,10 @@ func TestScritpsValid(t *testing.T) {
 		return
 	}
 
+
 	tot := 0
 	for i := range vecs {
-		if len(vecs[i])>=2 {
+		if len(vecs[i])>=3 {
 			tot++
 
 			s1, e := btc.DecodeScript(vecs[i][0])
@@ -49,14 +44,21 @@ func TestScritpsValid(t *testing.T) {
 				return
 			}
 
-			res := VerifyTxScript(s1, s2, 0, dummy_tx, true)
+			flags, e := decode_flags(vecs[i][2])
+			if e != nil {
+				//fmt.Println("InvalidScript", tot, e.Error())
+				continue
+			}
+
+			res := VerifyTxScript(s1, s2, 0, mk_out_tx(s1, s2), flags)
 			if !res {
-				t.Error(tot, "VerifyTxScript failed in", vecs[i][0], "->", vecs[i][1])
+				t.Error(tot, "VerifyTxScript failed in", vecs[i][0], "->", vecs[i][1], "/", vecs[i][2])
 				return
 			}
 		}
 	}
 }
+
 
 
 func TestScritpsInvalid(t *testing.T) {
@@ -76,7 +78,7 @@ func TestScritpsInvalid(t *testing.T) {
 
 	tot := 0
 	for i := range vecs {
-		if len(vecs[i])>=2 {
+		if len(vecs[i])>=3 {
 			tot++
 
 			s1, e := btc.DecodeScript(vecs[i][0])
@@ -90,11 +92,57 @@ func TestScritpsInvalid(t *testing.T) {
 				return
 			}
 
-			res := VerifyTxScript(s1, s2, 0, dummy_tx, true)
+			flags, e := decode_flags(vecs[i][2])
+			if e != nil {
+				//fmt.Println("InvalidScript", tot, e.Error())
+				continue
+			}
+
+			res := VerifyTxScript(s1, s2, 0, mk_out_tx(s1, s2), flags)
 			if res {
-				t.Error(tot, "VerifyTxScript NOT failed in", vecs[i][0], "->", vecs[i][1])
+				t.Error(tot, "VerifyTxScript NOT failed in", vecs[i][0], "->", vecs[i][1], "/", vecs[i][2], "/", vecs[i][3])
 				return
 			}
 		}
 	}
+}
+
+
+func decode_flags(s string) (fl uint32, e error) {
+	ss := strings.Split(s, ",")
+	for i := range ss {
+		switch ss[i] {
+			case "": // ignore
+			case "NONE": // ignore
+				break
+			case "P2SH":
+				fl |= VER_P2SH
+			case "DERSIG":
+				fl |= VER_DERSIG
+			default:
+				e = errors.New("Unsupported flag "+ss[i])
+				return
+		}
+	}
+	return
+}
+
+
+func mk_out_tx(sig_scr, pk_scr []byte) (output_tx *btc.Tx) {
+	// We build input_tx only to calculate it's hash for output_tx
+	input_tx := new(btc.Tx)
+	input_tx.Version = 1
+	input_tx.TxIn = []*btc.TxIn{ &btc.TxIn{Input:btc.TxPrevOut{Vout:0xffffffff},
+		ScriptSig:[]byte{0,0}, Sequence:0xffffffff} }
+	input_tx.TxOut = []*btc.TxOut{ &btc.TxOut{Pk_script:pk_scr} }
+	// Lock_time = 0
+
+	output_tx = new(btc.Tx)
+	output_tx.Version = 1
+	output_tx.TxIn = []*btc.TxIn{ &btc.TxIn{Input:btc.TxPrevOut{Hash:btc.Sha2Sum(input_tx.Serialize()), Vout:0},
+		ScriptSig:sig_scr, Sequence:0xffffffff} }
+	output_tx.TxOut = []*btc.TxOut{ &btc.TxOut{} }
+	// Lock_time = 0
+
+	return
 }

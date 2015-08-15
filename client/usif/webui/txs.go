@@ -112,7 +112,7 @@ func output_tx_xml(w http.ResponseWriter, id string) {
 				po, _ = common.BlockChain.Unspent.UnspentGet(&tx.TxIn[i].Input)
 			}
 			if po != nil {
-				ok := script.VerifyTxScript(tx.TxIn[i].ScriptSig, po.Pk_script, i, tx, true)
+				ok := script.VerifyTxScript(tx.TxIn[i].ScriptSig, po.Pk_script, i, tx, script.VER_P2SH|script.VER_DERSIG)
 				if !ok {
 					w.Write([]byte("<status>Script FAILED</status>"))
 				} else {
@@ -211,6 +211,9 @@ func xml_txs2s(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("<txpool>"))
 	network.TxMutex.Lock()
 	for _, v := range network.TransactionsToSend {
+		if len(r.Form["ownonly"])>0 && v.Own==0 {
+			continue
+		}
 		w.Write([]byte("<tx>"))
 		fmt.Fprint(w, "<id>", v.Tx.Hash.String(), "</id>")
 		fmt.Fprint(w, "<time>", v.Firstseen.Unix(), "</time>")

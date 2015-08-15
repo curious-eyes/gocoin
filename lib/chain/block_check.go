@@ -5,13 +5,21 @@ import (
 	"time"
 	"bytes"
 	"errors"
+	"encoding/binary"
 	"github.com/piotrnar/gocoin/lib/btc"
+	"github.com/piotrnar/gocoin/lib/script"
 )
 
 func (ch *Chain) CheckBlock(bl *btc.Block) (er error, dos bool, maybelater bool) {
 	// Size limits
 	if len(bl.Raw)<81 || len(bl.Raw)>btc.MAX_BLOCK_SIZE {
 		er = errors.New("CheckBlock() : size limits failed")
+		dos = true
+		return
+	}
+
+	if bl.Version()==0 {
+		er = errors.New("CheckBlock() : Block version 0 not allowed")
 		dos = true
 		return
 	}
@@ -64,6 +72,32 @@ func (ch *Chain) CheckBlock(bl *btc.Block) (er error, dos bool, maybelater bool)
 		}
 	}
 
+	// Count block versions within the Majority Window
+	var majority_v2, majority_v3 uint
+	n := prevblk
+	for cnt:=uint(0); cnt<ch.Consensus.Window && n!=nil; cnt++ {
+		ver := binary.LittleEndian.Uint32(n.BlockHeader[0:4])
+		if ver >= 2 {
+			majority_v2++
+			if ver >= 3 {
+				majority_v3++
+			}
+		}
+		n = n.Parent
+	}
+
+	if bl.Version()<2 && majority_v2>=ch.Consensus.RejectBlock {
+		er = errors.New("CheckBlock() : Rejected nVersion=1 block")
+		dos = true
+		return
+	}
+
+	if bl.Version()<3 && majority_v3>=ch.Consensus.RejectBlock {
+		er = errors.New("CheckBlock() : Rejected nVersion=2 block")
+		dos = true
+		return
+	}
+
 	if bl.Txs==nil {
 		er = bl.BuildTxList()
 		if er != nil {
@@ -73,13 +107,7 @@ func (ch *Chain) CheckBlock(bl *btc.Block) (er error, dos bool, maybelater bool)
 	}
 
 	if !bl.Trusted {
-		if bl.Version()==0 || (height>=ForceBlockVer2From && !ch.testnet() && bl.Version()<2) {
-			er = errors.New("CheckBlock() : Block version too low: "+bl.Hash.String())
-			dos = true
-			return
-		}
-
-		if bl.Version()>=2 {
+		if bl.Version()>=2 && majority_v2>=ch.Consensus.EnforceUpgrade {
 			var exp []byte
 			if height >= 0x800000 {
 				if height >= 0x80000000 {
@@ -117,6 +145,16 @@ func (ch *Chain) CheckBlock(bl *btc.Block) (er error, dos bool, maybelater bool)
 			dos = true
 			return
 		}
+	}
+
+	if bl.BlockTime()>=BIP16SwitchTime {
+		bl.VerifyFlags = script.VER_P2SH
+	} else {
+		bl.VerifyFlags = 0
+	}
+
+	if majority_v3>=ch.Consensus.EnforceUpgrade {
+		bl.VerifyFlags |= script.VER_DERSIG
 	}
 
 	return
